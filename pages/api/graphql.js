@@ -2,6 +2,9 @@ const { ApolloServer } = require("@apollo/server");
 const {
   startServerAndCreateNextHandler,
 } = require("@as-integrations/next");
+const {
+  ApolloServerPluginLandingPageLocalDefault,
+} = require("@apollo/server/plugin/landingPage/default");
 const { Pool } = require("pg");
 
 const pool = new Pool({
@@ -111,6 +114,7 @@ const resolvers = {
 const server = new ApolloServer({
   typeDefs,
   resolvers,
+  plugins: [ApolloServerPluginLandingPageLocalDefault()],
 });
 
 const handler = startServerAndCreateNextHandler(server);

@@ -51,7 +51,10 @@ const resolvers = {
         "SELECT * FROM students ORDER BY id"
       );
 
-      return result.rows;
+      return result.rows.map((student) => ({
+        ...student,
+        tanggal: student.tanggal.toISOString().split("T")[0],
+      }));
     },
 
     teachers: async () => {
@@ -59,7 +62,10 @@ const resolvers = {
         "SELECT * FROM teachers ORDER BY id"
       );
 
-      return result.rows;
+      return result.rows.map((teacher) => ({
+        ...teacher,
+        tanggal: teacher.tanggal.toISOString().split("T")[0],
+      }));
     },
 
     staff: async () => {
@@ -67,7 +73,10 @@ const resolvers = {
         "SELECT * FROM staff ORDER BY id"
       );
 
-      return result.rows;
+      return result.rows.map((staff) => ({
+        ...staff,
+        tanggal: staff.tanggal.toISOString().split("T")[0],
+      }));
     },
 
     student: async (_, { id }) => {

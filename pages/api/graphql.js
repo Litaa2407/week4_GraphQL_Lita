@@ -303,9 +303,7 @@ const server = new ApolloServer({
   ],
 });
 
-// ==========================================
 // NEXT.JS HANDLER
-// ==========================================
 const handler = startServerAndCreateNextHandler(server);
 
 module.exports = handler;

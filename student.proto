@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package student;
+
+message Student {
+  int32 id = 1;
+  string nama = 2;
+  int32 umur = 3;
+  string tanggal = 4;
+  int32 teacher_id = 5;
+}
+
+message GetStudentRequest {
+  int32 id = 1;
+}
+
+service StudentService {
+  rpc GetStudent(GetStudentRequest) returns (Student);
+}

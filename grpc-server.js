@@ -5,7 +5,7 @@ const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 const { Pool } = require("pg");
 
-const PROTO_PATH = path.join(__dirname, "..", "student.proto");
+const PROTO_PATH = path.join(__dirname, "student.proto");
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
   longs: String,

@@ -6,6 +6,7 @@ const {
   ApolloServerPluginLandingPageLocalDefault,
 } = require("@apollo/server/plugin/landingPage/default");
 const { Pool } = require("pg");
+const { SESSION_COOKIE, verifyAppToken } = require("../../lib/auth");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -304,6 +305,22 @@ const server = new ApolloServer({
 });
 
 // NEXT.JS HANDLER
-const handler = startServerAndCreateNextHandler(server);
+const apolloHandler = startServerAndCreateNextHandler(server, {
+  context: async (req) => {
+    const user = verifyAppToken(req.cookies?.[SESSION_COOKIE]);
+    return { user };
+  },
+});
+
+const handler = async (req, res) => {
+  if (!verifyAppToken(req.cookies?.[SESSION_COOKIE])) {
+    res.status(401).json({
+      errors: [{ message: "Authentication required", extensions: { code: "UNAUTHENTICATED" } }],
+    });
+    return;
+  }
+
+  await apolloHandler(req, res);
+};
 
 module.exports = handler;

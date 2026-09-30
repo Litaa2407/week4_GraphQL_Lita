@@ -28,8 +28,6 @@ This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-appl
 
 To learn more about Next.js, take a look at the following resources:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
@@ -38,3 +36,15 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+
+## GitHub OAuth Login
+
+Create a GitHub OAuth App and set its Authorization callback URL to:
+
+```text
+http://localhost:3000/api/auth/github/callback
+```
+
+Copy `.env.example` to `.env` and set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and a random `JWT_SECRET` with at least 32 characters. Keep the client secret and JWT secret server-side; do not commit `.env`. Set `APP_URL` to the application's public origin when deploying, and register `${APP_URL}/api/auth/github/callback` as the OAuth callback URL.
+
+The callback validates OAuth `state`, exchanges the authorization code on the server, fetches the GitHub profile, and issues an HTTP-only app JWT cookie. Requests to `/api/graphql` require that cookie.

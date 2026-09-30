@@ -6,7 +6,7 @@ const {
   ApolloServerPluginLandingPageLocalDefault,
 } = require("@apollo/server/plugin/landingPage/default");
 const { Pool } = require("pg");
-const { SESSION_COOKIE, verifyAppToken } = require("../../lib/auth");
+const { verifyAppToken } = require("../../lib/auth");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -307,19 +307,30 @@ const server = new ApolloServer({
 // NEXT.JS HANDLER
 const apolloHandler = startServerAndCreateNextHandler(server, {
   context: async (req) => {
-    const user = verifyAppToken(req.cookies?.[SESSION_COOKIE]);
-    return { user };
+    return { user: req.authenticatedUser };
   },
 });
 
 const handler = async (req, res) => {
-  if (!verifyAppToken(req.cookies?.[SESSION_COOKIE])) {
+  if (req.method === "GET" && req.query?.query === undefined) {
+    await apolloHandler(req, res);
+    return;
+  }
+
+  const authorization = req.headers.authorization;
+  const bearerToken = typeof authorization === "string"
+    ? authorization.match(/^Bearer\s+(.+)$/i)?.[1]
+    : undefined;
+  const user = verifyAppToken(bearerToken);
+
+  if (!user) {
     res.status(401).json({
       errors: [{ message: "Authentication required", extensions: { code: "UNAUTHENTICATED" } }],
     });
     return;
   }
 
+  req.authenticatedUser = user;
   await apolloHandler(req, res);
 };
 

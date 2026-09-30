@@ -47,4 +47,4 @@ http://localhost:3000/api/auth/github/callback
 
 Copy `.env.example` to `.env` and set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and a random `JWT_SECRET` with at least 32 characters. Keep the client secret and JWT secret server-side; do not commit `.env`. Set `APP_URL` to the application's public origin when deploying, and register `${APP_URL}/api/auth/github/callback` as the OAuth callback URL.
 
-The callback validates OAuth `state`, exchanges the authorization code on the server, fetches the GitHub profile, and issues an HTTP-only app JWT cookie. Requests to `/api/graphql` require that cookie.
+The callback validates OAuth `state`, exchanges the authorization code on the server, fetches the GitHub profile, and issues an HTTP-only app JWT cookie. Use the cookie to maintain the web login; GraphQL operations require `Authorization: Bearer <JWT>`. Requests without a valid bearer token are rejected with `401 UNAUTHENTICATED`.

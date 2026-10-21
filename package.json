@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "grpc": "node grpc-server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:rate-limit": "node gateway/test-rate-limit.js"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",

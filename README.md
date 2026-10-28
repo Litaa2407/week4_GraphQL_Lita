@@ -16,9 +16,13 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Express API Gateway
+## GraphQL API and microservices
 
-The [gateway project](./gateway/README.md) proxies this Next.js app as service-a on port `3000`, alongside a demo Express service-b on port `3001`. Start the gateway on port `8080` and access both services through `/service-a/*` and `/service-b/*`. The gateway README includes local run instructions, rate-limit testing, optional API-key configuration, and an architecture diagram.
+The Next.js GraphQL API on port `3000` delegates student operations to the Express [student-service](./student-service/) on port `3001` and teacher operations to the Express [teacher-service](./teacher-service/) on port `3002`. Student creation validates the teacher through teacher-service. Both services currently use the existing PostgreSQL database configured by `DATABASE_URL`; student-service owns student operations and teacher-service owns teacher reads.
+
+The [gateway project](./gateway/README.md) routes `/service-a/*`, `/student-service/*`, and `/teacher-service/*` through port `8080`. See the gateway README for the manual Postman failure exercise, the automated smoke test, and the architecture diagram.
+
+For the failure exercise, start Next.js with `npm run dev`, then run `node .\smoke-test.js` from the project root. The test starts the two data services and gateway, stops teacher-service, verifies student creation returns `503` while student listing remains `200`, then verifies creation returns `201` after teacher-service restarts. It removes the test student afterward.
 
 You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
 

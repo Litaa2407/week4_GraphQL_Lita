@@ -8,6 +8,7 @@
     "start": "next start",
     "grpc": "node grpc-server.js",
     "lint": "eslint",
+    "test:microservices": "node smoke-test.js",
     "test:rate-limit": "node gateway/test-rate-limit.js"
   },
   "dependencies": {

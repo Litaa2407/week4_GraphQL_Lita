@@ -1,0 +1,14 @@
+{
+  "name": "student-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Student API service for the GraphQL application",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "pg": "^8.23.0"
+  }
+}

@@ -19,6 +19,10 @@ flowchart TD
         GraphQL["Next.js GraphQL API"]
         StudentService["Student service port 3001"]
         TeacherService["Teacher service port 3002"]
+        EmailConsumer["Email consumer"]
+    end
+    subgraph MessagingLayer["Asynchronous Messaging"]
+        RabbitMQ[("RabbitMQ queue student.created")]
     end
     subgraph DataLayer["Data and External Services"]
         PostgreSQL[("Shared PostgreSQL")]
@@ -33,6 +37,8 @@ flowchart TD
     GraphQL -->|"student operations"| StudentService
     GraphQL -->|"teacher operations"| TeacherService
     StudentService -->|"validate teacher"| TeacherService
+    StudentService -->|"student.created.v1 event"| RabbitMQ
+    RabbitMQ -->|"manual ACK"| EmailConsumer
     GraphQL -->|"staff queries"| PostgreSQL
     StudentService -->|"student table"| PostgreSQL
     TeacherService -->|"teacher table"| PostgreSQL
@@ -48,6 +54,8 @@ flowchart TD
 | GraphQL API | Next.js, Apollo Server, GraphQL | Next.js 16.3.4, Apollo ^5.5.1, GraphQL ^16.14.2 | Existing GraphQL API, staff data, and authentication |
 | Student service | Node.js, Express, `pg` | Express ^5.1.0, `pg` ^8.23.0 | Owns student queries and mutations; validates teacher assignments |
 | Teacher service | Node.js, Express, `pg` | Express ^5.1.0, `pg` ^8.23.0 | Owns teacher queries |
+| Email consumer | Node.js, `amqplib` | RabbitMQ AMQP 0-9-1 | Consumes `student.created.v1` and simulates a notification email |
+| Message broker | RabbitMQ | RabbitMQ 4 Management | Durably queues student-created events for asynchronous notification |
 | Data | PostgreSQL | Configured by `DATABASE_URL` | Stores student, teacher, and staff records |
 | External identity | GitHub OAuth | N/A | Provides the sign-in flow for the web application |
 
@@ -59,6 +67,8 @@ Student-service, teacher-service, and the remaining staff GraphQL resolvers curr
 
 - The GraphQL API delegates student and teacher operations to their respective services while retaining staff queries and authentication.
 - Creating or updating a student calls teacher-service to verify the teacher; if that dependency is unavailable, student-service returns `503`.
+- Student-service publishes `student.created.v1` after creating a student. RabbitMQ retains the persistent message until the email consumer acknowledges it.
+- The email consumer demonstrates at-least-once delivery: a crash after the simulated send but before acknowledgment causes redelivery. A production email consumer should deduplicate using `eventId`.
 - PostgreSQL remains persistent, so successfully created student records are not automatically reset when a service restarts.
 
 ## Component Relationships
@@ -87,6 +97,10 @@ flowchart LR
         cTeacherApi["Teacher Express routes"]
         cTeacherDb["Teacher queries"]
     end
+    subgraph cMessagingLayer["Asynchronous messaging"]
+        cRabbitMQ[("RabbitMQ student.created")]
+        cEmailConsumer["Email consumer"]
+    end
     subgraph cDataLayer["Data Access"]
         cPgPool["PostgreSQL connection pools"]
         cDatabase[("PostgreSQL")]
@@ -105,6 +119,8 @@ flowchart LR
     cStudentApi --> cStudentDb
     cStudentDb -->|"teacher validation"| cTeacherApi
     cStudentDb -->|"student table"| cPgPool
+    cStudentDb -->|"student.created.v1"| cRabbitMQ
+    cRabbitMQ -->|"manual ACK"| cEmailConsumer
     cTeacherApi --> cTeacherDb
     cTeacherDb -->|"teacher table"| cPgPool
     cPgPool --> cDatabase
@@ -124,4 +140,6 @@ flowchart LR
 | Student queries and mutations | Student service | Data access | Reads and writes student records and validates teacher assignments |
 | Teacher Express routes | Teacher service | HTTP routes | Exposes teacher reads and health check |
 | Teacher queries | Teacher service | Data access | Reads teacher records from PostgreSQL |
+| RabbitMQ queue | Messaging | Durable message queue | Buffers student-created events while the email consumer is unavailable |
+| Email consumer | Messaging | Event consumer | Simulates email delivery and acknowledges processed events |
 | PostgreSQL connection pools | Data Access | Database clients | Executes parameterized SQL for owned records and staff queries |

@@ -3,6 +3,7 @@ require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
 
 const express = require("express");
 const { Pool } = require("pg");
+const { publishStudentCreated } = require("./student-events");
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -101,6 +102,20 @@ app.post("/students", async (req, res) => {
      RETURNING *`,
     [nama.trim(), umur, tanggal, teacherId]
   );
+
+  try {
+    await publishStudentCreated(result.rows[0]);
+  } catch (error) {
+    console.error(
+      `Student ${result.rows[0].id} tersimpan, tetapi event notifikasi gagal dipublikasikan:`,
+      error
+    );
+    return res.status(503).json({
+      error: "Student tersimpan, tetapi notifikasi belum masuk antrean",
+      student_id: result.rows[0].id,
+    });
+  }
+
   return res.status(201).json(formatStudent(result.rows[0]));
 });
 

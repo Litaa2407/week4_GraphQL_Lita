@@ -22,6 +22,51 @@ The Next.js GraphQL API on port `3000` delegates student operations to the Expre
 
 The [gateway project](./gateway/README.md) routes `/service-a/*`, `/student-service/*`, and `/teacher-service/*` through port `8080`. See the gateway README for the manual Postman failure exercise, the automated smoke test, and the architecture diagram.
 
+### Event asinkron: notifikasi student dibuat
+
+Saat student berhasil dibuat, student-service menerbitkan event persisten `student.created.v1` ke antrean RabbitMQ `student.created`. Consumer email memprosesnya secara terpisah dan mengakui pesan setelah simulasi pengiriman email. Pesan tetap menunggu jika consumer mati, sehingga pembuatan student tidak perlu menunggu pekerjaan notifikasi selesai.
+
+| Elemen | Detail |
+| --- | --- |
+| Nama event | `student.created.v1` |
+| Isi pesan | `eventId`, `eventType`, `occurredAt`, dan `data` berisi `studentId`, `nama`, `teacherId`, serta `recipient` |
+| Producer | `student-service`, setelah record student berhasil dibuat |
+| Consumer | `email-service` (`email-service/consumer.js`) |
+| Alasan asinkron | Notifikasi bukan bagian dari respons utama pembuatan student; antrean menahan pesan saat consumer tidak tersedia dan memungkinkan pemrosesan terpisah. |
+
+Jika RabbitMQ tidak tersedia saat event diterbitkan, endpoint mengembalikan `503` dan `student_id` karena record student sudah tersimpan. Periksa record tersebut sebelum mengulang request pembuatan.
+
+#### Menjalankan dan mengambil bukti
+
+Pastikan Docker Desktop berjalan. Dari root project:
+
+```powershell
+docker compose up -d
+npm run email:publish-demo
+```
+
+`email:publish-demo` menerbitkan tiga event contoh tanpa memerlukan koneksi database. Jangan jalankan consumer dulu. Buka `http://localhost:15672` (login `guest` / `guest`), pilih **Queues and Streams** lalu `student.created`; ambil screenshot ketika **Ready = 3**.
+Jika queue berisi pesan dari percobaan sebelumnya, gunakan **Purge messages** pada halaman queue sebelum menerbitkan tiga event agar angkanya tepat tiga.
+
+Nyalakan consumer dengan `npm run email:consumer`. Ketiga pesan berpindah dari **Ready** ke **Unacked**, lalu diakui satu per satu. Ambil screenshot terminal setelah semua baris `EMAIL_SENT` dan `ACK` muncul. Log tersebut menyimulasikan email; tidak ada email SMTP yang benar-benar dikirim. Setelah verifikasi, hentikan consumer dengan `Ctrl+C`.
+
+Untuk menunjukkan pengiriman dua kali akibat proses mati sebelum ACK, terbitkan satu event lalu jalankan consumer dalam mode crash:
+
+```powershell
+npm run email:publish-demo -- --count=1
+npm run email:consumer:crash
+```
+
+Consumer mencatat `EMAIL_SENT`, lalu berhenti sebelum ACK. Mulai ulang consumer normal:
+
+```powershell
+npm run email:consumer
+```
+
+Event yang sama akan menghasilkan dua baris `EMAIL_SENT` dengan `eventId` yang sama, karena RabbitMQ mengirim ulang pesan yang belum di-ACK. Ambil screenshot terminal yang menampilkan kedua baris tersebut. Ini menunjukkan perilaku at-least-once; consumer email produksi perlu idempotensi berdasarkan `eventId` agar retry tidak mengirim email ganda.
+
+Diagram arsitektur yang diperbarui tersedia di [diagram SVG](./gateway/architecture-diagram.svg) dan [dokumentasi arsitektur](./.github/modernize/assessment/engines/facts/architecture-diagram.md).
+
 For the failure exercise, start Next.js with `npm run dev`, then run `node .\smoke-test.js` from the project root. The test starts the two data services and gateway, stops teacher-service, verifies student creation returns `503` while student listing remains `200`, then verifies creation returns `201` after teacher-service restarts. It removes the test student afterward.
 
 You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.

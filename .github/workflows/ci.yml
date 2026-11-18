@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, uji-gagal]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            student-service/package-lock.json
+            teacher-service/package-lock.json
+            gateway/package-lock.json
+      - name: Install GraphQL application dependencies
+        run: npm ci
+      - name: Install student-service dependencies
+        run: npm ci
+        working-directory: student-service
+      - name: Install teacher-service dependencies
+        run: npm ci
+        working-directory: teacher-service
+      - name: Install gateway dependencies
+        run: npm ci
+        working-directory: gateway
+      - name: Test all services and API contracts
+        run: npm test
+      - name: Lint GraphQL application
+        run: npm run lint

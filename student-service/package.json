@@ -1,0 +1,16 @@
+{
+  "name": "student-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Student API service for the GraphQL application",
+  "scripts": {
+    "test": "node --test test/server.test.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.9",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "pg": "^8.23.0"
+  }
+}

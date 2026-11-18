@@ -14,6 +14,48 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
+const studentServiceUrl =
+  process.env.STUDENT_SERVICE_URL || "http://localhost:3001";
+const teacherServiceUrl =
+  process.env.TEACHER_SERVICE_URL || "http://localhost:3002";
+
+async function callService(baseUrl, route, options = {}) {
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${route}`, {
+      ...options,
+      signal: AbortSignal.timeout(2500),
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    const reason =
+      error.name === "TimeoutError"
+        ? "request timeout setelah 2.5 detik"
+        : "tidak dapat dihubungi";
+    throw new Error(`Service ${baseUrl} ${reason}`);
+  }
+
+  if (response.status === 204) return null;
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || `Service ${baseUrl} mengembalikan ${response.status}`);
+  }
+  return body;
+}
+
+function formatStaff(staff) {
+  return {
+    ...staff,
+    tanggal:
+      staff.tanggal instanceof Date
+        ? staff.tanggal.toISOString().split("T")[0]
+        : String(staff.tanggal).slice(0, 10),
+  };
+}
 
 // Counter untuk membuktikan N+1 Problem
 let teacherResolverCallCount = 0;
@@ -77,73 +119,37 @@ const resolvers = {
   // QUERY
   // ==========================================
   Query: {
-    students: async () => {
-      const result = await pool.query(
-        "SELECT * FROM students ORDER BY id"
-      );
-
-      return result.rows.map((student) => ({
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      }));
-    },
+    students: () => callService(studentServiceUrl, "/students"),
 
     teachers: async () => {
       teacherResolverCallCount = 0;
-
-      const result = await pool.query(
-        "SELECT * FROM teachers ORDER BY id"
-      );
-
       console.log("Query.teachers dipanggil: 1 kali");
-
-      return result.rows.map((teacher) => ({
-        ...teacher,
-        tanggal: teacher.tanggal.toISOString().split("T")[0],
-      }));
+      return callService(teacherServiceUrl, "/teachers");
     },
 
     staff: async () => {
       const result = await pool.query(
         "SELECT * FROM staff ORDER BY id"
       );
-
-      return result.rows.map((staff) => ({
-        ...staff,
-        tanggal: staff.tanggal.toISOString().split("T")[0],
-      }));
+      return result.rows.map(formatStaff);
     },
 
     student: async (_, { id }) => {
-      const result = await pool.query(
-        "SELECT * FROM students WHERE id = $1",
-        [id]
-      );
-
-      const student = result.rows[0];
-
-      if (!student) return null;
-
-      return {
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      };
+      try {
+        return await callService(studentServiceUrl, `/students/${encodeURIComponent(id)}`);
+      } catch (error) {
+        if (error.message === "Student tidak ditemukan") return null;
+        throw error;
+      }
     },
 
     teacher: async (_, { id }) => {
-      const result = await pool.query(
-        "SELECT * FROM teachers WHERE id = $1",
-        [id]
-      );
-
-      const teacher = result.rows[0];
-
-      if (!teacher) return null;
-
-      return {
-        ...teacher,
-        tanggal: teacher.tanggal.toISOString().split("T")[0],
-      };
+      try {
+        return await callService(teacherServiceUrl, `/teachers/${encodeURIComponent(id)}`);
+      } catch (error) {
+        if (error.message === "Teacher tidak ditemukan") return null;
+        throw error;
+      }
     },
 
     staffMember: async (_, { id }) => {
@@ -156,10 +162,7 @@ const resolvers = {
 
       if (!staff) return null;
 
-      return {
-        ...staff,
-        tanggal: staff.tanggal.toISOString().split("T")[0],
-      };
+      return formatStaff(staff);
     },
   },
 
@@ -173,18 +176,10 @@ const resolvers = {
       console.log(
         `Teacher.students resolver dipanggil: ${teacherResolverCallCount} kali`
       );
-
-      const result = await pool.query(
-        `SELECT * FROM students
-         WHERE teacher_id = $1
-         ORDER BY id`,
-        [teacher.id]
+      return callService(
+        studentServiceUrl,
+        `/students?teacher_id=${encodeURIComponent(teacher.id)}`
       );
-
-      return result.rows.map((student) => ({
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      }));
     },
   },
 
@@ -196,99 +191,33 @@ const resolvers = {
     // ==========================================
     // CREATE STUDENT
     // ==========================================
-    createStudent: async (_, { nama, umur, tanggal, teacher_id }) => {
-
-      // Cek teacher
-      const teacherCheck = await pool.query(
-        "SELECT id FROM teachers WHERE id = $1",
-        [teacher_id]
-      );
-
-      if (teacherCheck.rows.length === 0) {
-        throw new Error("Teacher tidak ditemukan");
-      }
-
-      const result = await pool.query(
-        `INSERT INTO students
-          (nama, umur, tanggal, teacher_id)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [nama, umur, tanggal, teacher_id]
-      );
-
-      const student = result.rows[0];
-
-      return {
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      };
-    },
+    createStudent: (_, input) =>
+      callService(studentServiceUrl, "/students", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
 
     // ==========================================
     // UPDATE STUDENT
     // ==========================================
-    updateStudent: async (
-      _,
-      { id, nama, umur, tanggal, teacher_id }
-    ) => {
-
-      // Cek teacher
-      const teacherCheck = await pool.query(
-        "SELECT id FROM teachers WHERE id = $1",
-        [teacher_id]
+    updateStudent: (_, input) => {
+      const { id, ...student } = input;
+      return callService(
+        studentServiceUrl,
+        `/students/${encodeURIComponent(id)}`,
+        { method: "PUT", body: JSON.stringify(student) }
       );
-
-      if (teacherCheck.rows.length === 0) {
-        throw new Error("Teacher tidak ditemukan");
-      }
-
-      const result = await pool.query(
-        `UPDATE students
-         SET
-           nama = $1,
-           umur = $2,
-           tanggal = $3,
-           teacher_id = $4
-         WHERE id = $5
-         RETURNING *`,
-        [nama, umur, tanggal, teacher_id, id]
-      );
-
-      const student = result.rows[0];
-
-      if (!student) {
-        throw new Error("Student tidak ditemukan");
-      }
-
-      return {
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      };
     },
 
     // ==========================================
     // DELETE STUDENT
     // ==========================================
-    deleteStudent: async (_, { id }) => {
-
-      const result = await pool.query(
-        `DELETE FROM students
-         WHERE id = $1
-         RETURNING *`,
-        [id]
-      );
-
-      const student = result.rows[0];
-
-      if (!student) {
-        throw new Error("Student tidak ditemukan");
-      }
-
-      return {
-        ...student,
-        tanggal: student.tanggal.toISOString().split("T")[0],
-      };
-    },
+    deleteStudent: (_, { id }) =>
+      callService(
+        studentServiceUrl,
+        `/students/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      ),
   },
 };
 

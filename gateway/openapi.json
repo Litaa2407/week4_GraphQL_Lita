@@ -1,0 +1,481 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Student and Teacher Services API",
+    "version": "1.0.0",
+    "description": "OpenAPI contract for the student-service and teacher-service routed through the Express gateway."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local API gateway"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Student Service",
+      "description": "Student management endpoints routed to student-service."
+    },
+    {
+      "name": "Teacher Service",
+      "description": "Teacher read endpoints routed to teacher-service."
+    }
+  ],
+  "paths": {
+    "/student-service/health": {
+      "get": {
+        "tags": ["Student Service"],
+        "summary": "Check student-service health",
+        "operationId": "getStudentServiceHealth",
+        "responses": {
+          "200": {
+            "description": "Service and database are healthy.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Health" },
+                "example": { "status": "ok", "service": "student-service" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/student-service/students": {
+      "get": {
+        "tags": ["Student Service"],
+        "summary": "List students",
+        "operationId": "listStudents",
+        "parameters": [
+          {
+            "name": "teacher_id",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1 },
+            "description": "Filter students by teacher ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Student" }
+                }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      },
+      "post": {
+        "tags": ["Student Service"],
+        "summary": "Create a student",
+        "description": "A student with a case-insensitive matching name and the same teacher_id cannot be created twice.",
+        "operationId": "createStudent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StudentInput" },
+              "example": {
+                "nama": "Siswa Swagger",
+                "umur": 20,
+                "tanggal": "2006-01-15",
+                "teacher_id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Student created and notification event published.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Student" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": {
+            "description": "A student with the same name and teacher already exists.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "error": "Student dengan nama dan teacher tersebut sudah terdaftar"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The teacher ID does not exist.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Teacher tidak ditemukan" }
+              }
+            }
+          },
+          "503": {
+            "description": "Teacher service or notification queue is unavailable. A notification failure response includes student_id because the student is already stored.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "examples": {
+                  "teacherUnavailable": {
+                    "value": { "error": "Teacher service tidak dapat dihubungi" }
+                  },
+                  "notificationUnavailable": {
+                    "value": {
+                      "error": "Student tersimpan, tetapi notifikasi belum masuk antrean",
+                      "student_id": 101
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/student-service/students/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "integer", "minimum": 1 }
+        }
+      ],
+      "get": {
+        "tags": ["Student Service"],
+        "summary": "Get a student",
+        "operationId": "getStudent",
+        "responses": {
+          "200": {
+            "description": "Student found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Student" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": {
+            "description": "Student not found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Student tidak ditemukan" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      },
+      "put": {
+        "tags": ["Student Service"],
+        "summary": "Replace a student's details",
+        "operationId": "updateStudent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StudentInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Student updated.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Student" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": {
+            "description": "Student not found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Student tidak ditemukan" }
+              }
+            }
+          },
+          "409": {
+            "description": "Another student already has the same name and teacher.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "error": "Student dengan nama dan teacher tersebut sudah terdaftar"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The teacher ID does not exist.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      },
+      "delete": {
+        "tags": ["Student Service"],
+        "summary": "Delete a student",
+        "operationId": "deleteStudent",
+        "responses": {
+          "200": {
+            "description": "Student deleted. The response contains the deleted ID.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeletedStudent" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": {
+            "description": "Student not found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/teacher-service/health": {
+      "get": {
+        "tags": ["Teacher Service"],
+        "summary": "Check teacher-service health",
+        "operationId": "getTeacherServiceHealth",
+        "security": [{ "ApiKeyAuth": [] }, {}],
+        "responses": {
+          "200": {
+            "description": "Service and database are healthy.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Health" },
+                "example": { "status": "ok", "service": "teacher-service" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key when API_KEY is configured on the gateway.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/teacher-service/teachers": {
+      "get": {
+        "tags": ["Teacher Service"],
+        "summary": "List teachers",
+        "operationId": "listTeachers",
+        "security": [{ "ApiKeyAuth": [] }, {}],
+        "responses": {
+          "200": {
+            "description": "Teacher list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Teacher" }
+                }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "401": {
+            "description": "Missing or invalid API key when API_KEY is configured on the gateway.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Unauthorized" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/teacher-service/teachers/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "integer", "minimum": 1 }
+        }
+      ],
+      "get": {
+        "tags": ["Teacher Service"],
+        "summary": "Get a teacher",
+        "operationId": "getTeacher",
+        "security": [{ "ApiKeyAuth": [] }, {}],
+        "responses": {
+          "200": {
+            "description": "Teacher found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Teacher" }
+              }
+            }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": {
+            "description": "Teacher not found.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Teacher tidak ditemukan" }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key when API_KEY is configured on the gateway.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    },
+    "schemas": {
+      "StudentInput": {
+        "type": "object",
+        "required": ["nama", "umur", "tanggal", "teacher_id"],
+        "properties": {
+          "nama": { "type": "string", "minLength": 1, "example": "Siswa Swagger" },
+          "umur": { "type": "integer", "example": 20 },
+          "tanggal": { "type": "string", "format": "date", "example": "2006-01-15" },
+          "teacher_id": { "type": "integer", "minimum": 1, "example": 1 }
+        }
+      },
+      "Student": {
+        "allOf": [
+          { "$ref": "#/components/schemas/StudentInput" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": { "id": { "type": "integer", "example": 101 } }
+          }
+        ]
+      },
+      "DeletedStudent": {
+        "type": "object",
+        "required": ["id"],
+        "properties": { "id": { "type": "integer", "example": 101 } }
+      },
+      "Teacher": {
+        "type": "object",
+        "required": ["id", "nama", "umur", "tanggal"],
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "nama": { "type": "string", "example": "Budi Santoso" },
+          "umur": { "type": "integer", "example": 42 },
+          "tanggal": { "type": "string", "format": "date", "example": "1984-05-10" }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": ["status", "service"],
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "service": { "type": "string", "example": "student-service" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "example": "Data student tidak valid" },
+          "student_id": { "type": "integer", "description": "Present when the student was saved but notification publishing failed." }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request data or ID.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Data student tidak valid" }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "A downstream service is unavailable.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Gateway rate limit exceeded (20 requests per 10 seconds per IP).",
+        "content": {
+          "text/html": {
+            "schema": { "type": "string" },
+            "example": "Too many requests, please try again later."
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected service error.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Gagal memproses data" }
+          }
+        }
+      }
+    }
+  }
+}

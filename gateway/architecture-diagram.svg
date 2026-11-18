@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title description">
+  <title id="title">Arsitektur GraphQL dengan event RabbitMQ</title>
+  <desc id="description">Klien memakai Express Gateway untuk mencapai GraphQL, student-service, dan teacher-service. Student-service menerbitkan event student.created.v1 ke RabbitMQ untuk email consumer.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10" fill="none" stroke="#52617a" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    </marker>
+    <marker id="async-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10" fill="none" stroke="#7b52c7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#18233b" flood-opacity=".09"/>
+    </filter>
+    <style>
+      .title { font: 700 32px "Segoe UI", Arial, sans-serif; fill: #17243b; }
+      .subtitle { font: 16px "Segoe UI", Arial, sans-serif; fill: #60708a; }
+      .node-title { font: 700 21px "Segoe UI", Arial, sans-serif; fill: #17243b; }
+      .node-detail { font: 15px "Segoe UI", Arial, sans-serif; fill: #53627a; }
+      .route { font: 600 14px "Segoe UI", Arial, sans-serif; fill: #40516d; }
+      .event { font: 600 14px "Segoe UI", Arial, sans-serif; fill: #7145b5; }
+      .small { font: 14px "Segoe UI", Arial, sans-serif; fill: #728098; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" rx="24" fill="#f5f7fb"/>
+  <text x="700" y="58" text-anchor="middle" class="title">Arsitektur GraphQL dengan Event Asinkron</text>
+  <text x="700" y="88" text-anchor="middle" class="subtitle">Notifikasi student dibuat diproses lewat RabbitMQ, terpisah dari request utama</text>
+
+  <g filter="url(#shadow)">
+    <rect x="45" y="340" width="220" height="130" rx="18" fill="#fff" stroke="#d9e1ee" stroke-width="2"/>
+    <rect x="350" y="330" width="245" height="150" rx="20" fill="#eaf1ff" stroke="#4b78df" stroke-width="2.5"/>
+    <rect x="700" y="135" width="265" height="140" rx="18" fill="#fff" stroke="#8dcbb3" stroke-width="2"/>
+    <rect x="700" y="355" width="265" height="160" rx="18" fill="#fff" stroke="#edc27c" stroke-width="2"/>
+    <rect x="1080" y="355" width="265" height="145" rx="18" fill="#fff" stroke="#8dcbb3" stroke-width="2"/>
+    <rect x="1050" y="610" width="290" height="135" rx="18" fill="#f4edff" stroke="#a78bda" stroke-width="2"/>
+    <rect x="700" y="640" width="265" height="125" rx="18" fill="#fff" stroke="#a78bda" stroke-width="2"/>
+    <rect x="1080" y="125" width="265" height="135" rx="18" fill="#fff" stroke="#8dcbb3" stroke-width="2"/>
+  </g>
+
+  <g fill="none" stroke="#52617a" stroke-width="2.5" marker-end="url(#arrow)">
+    <path d="M265 405 H350"/>
+    <path d="M595 365 C650 365 650 205 700 205"/>
+    <path d="M595 405 H700"/>
+    <path d="M595 445 C830 545 990 500 1080 435"/>
+    <path d="M965 205 H1080"/>
+    <path d="M965 425 H1080"/>
+    <path d="M830 275 V355"/>
+    <path d="M1212 355 V260"/>
+    <path d="M965 375 C1015 350 1030 290 1080 230"/>
+  </g>
+  <g fill="none" stroke="#7b52c7" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#async-arrow)">
+    <path d="M965 470 C1020 490 1030 545 1090 610"/>
+    <path d="M1050 700 H965"/>
+  </g>
+
+  <text x="307" y="390" text-anchor="middle" class="route">HTTP :8080</text>
+  <text x="645" y="260" text-anchor="middle" class="route">/service-a/*</text>
+  <text x="645" y="394" text-anchor="middle" class="route">/student-service/*</text>
+  <text x="645" y="490" text-anchor="middle" class="route">/teacher-service/*</text>
+  <text x="1018" y="190" text-anchor="middle" class="route">staff queries</text>
+  <text x="1017" y="412" text-anchor="middle" class="route">teacher validation</text>
+  <text x="851" y="580" class="event">student.created.v1</text>
+  <text x="1008" y="685" text-anchor="middle" class="event">consume + manual ACK</text>
+
+  <g text-anchor="middle">
+    <text x="155" y="385" class="node-title">Klien</text>
+    <text x="155" y="416" class="node-detail">Browser atau Postman</text>
+    <text x="155" y="441" class="node-detail">HTTP request</text>
+
+    <text x="472" y="380" class="node-title">Express Gateway</text>
+    <text x="472" y="414" class="node-detail">Port 8080</text>
+    <text x="472" y="442" class="node-detail">Rate limit + routing</text>
+    <text x="832" y="185" class="node-title">Next.js GraphQL</text>
+    <text x="832" y="218" class="node-detail">Port 3000</text>
+    <text x="832" y="242" class="node-detail">API dan autentikasi</text>
+
+    <text x="832" y="402" class="node-title">Student-service</text>
+    <text x="832" y="435" class="node-detail">Express, port 3001</text>
+    <text x="832" y="460" class="node-detail">CRUD + validasi teacher</text>
+    <text x="832" y="485" class="node-detail">Producer event</text>
+
+    <text x="1212" y="405" class="node-title">Teacher-service</text>
+    <text x="1212" y="438" class="node-detail">Express, port 3002</text>
+    <text x="1212" y="463" class="node-detail">Data teacher</text>
+
+    <text x="1195" y="657" class="node-title">RabbitMQ</text>
+    <text x="1195" y="690" class="node-detail">Durable queue</text>
+    <text x="1195" y="715" class="node-detail">student.created</text>
+
+    <text x="832" y="687" class="node-title">Email consumer</text>
+    <text x="832" y="720" class="node-detail">Simulasi email</text>
+    <text x="832" y="744" class="node-detail">ACK setelah diproses</text>
+
+    <text x="1212" y="175" class="node-title">PostgreSQL</text>
+    <text x="1212" y="209" class="node-detail">Students, teachers, staff</text>
+    <text x="1212" y="234" class="node-detail">Shared database</text>
+  </g>
+
+  <text x="700" y="835" text-anchor="middle" class="small">Panah ungu putus-putus menandakan alur asinkron: pesan dapat menunggu saat consumer tidak aktif.</text>
+</svg>

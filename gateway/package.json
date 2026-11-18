@@ -1,0 +1,19 @@
+{
+  "name": "graphql-server-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express API gateway for the GraphQL app and demo service",
+  "scripts": {
+    "start": "node gateway.js",
+    "test:openapi-contract": "node test-openapi-contract.js",
+    "test:rate-limit": "node test-rate-limit.js",
+    "test:openapi-contract": "node test-openapi-contract.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "http-proxy-middleware": "^3.0.5",
+    "swagger-ui-express": "^5.0.1"
+  }
+}

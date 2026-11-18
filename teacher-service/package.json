@@ -4,6 +4,7 @@
   "private": true,
   "description": "Teacher API service for the GraphQL application",
   "scripts": {
+    "test": "node --test test/server.test.js",
     "start": "node server.js"
   },
   "dependencies": {

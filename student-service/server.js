@@ -5,16 +5,13 @@ const express = require("express");
 const { Pool } = require("pg");
 const { publishStudentCreated } = require("./student-events");
 
-const app = express();
 const port = Number(process.env.PORT || 3001);
 const teacherServiceUrl =
-  process.env.TEACHER_SERVICE_URL || "http://localhost:3002";
+  process.env.TEACHER_SERVICE_URL || "http://127.0.0.1:3002";
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
-
-app.use(express.json());
 
 function formatStudent(student) {
   return {
@@ -26,10 +23,10 @@ function formatStudent(student) {
   };
 }
 
-async function validateTeacher(teacherId) {
+async function validateTeacher(teacherId, fetchImpl) {
   let response;
   try {
-    response = await fetch(`${teacherServiceUrl}/teachers/${teacherId}`, {
+    response = await fetchImpl(`${teacherServiceUrl}/teachers/${teacherId}`, {
       signal: AbortSignal.timeout(2000),
     });
   } catch (error) {
@@ -49,132 +46,184 @@ async function validateTeacher(teacherId) {
   return null;
 }
 
-app.get("/health", async (req, res) => {
-  await pool.query("SELECT 1");
-  res.json({ status: "ok", service: "student-service" });
-});
+async function findConflictingStudent(database, nama, teacherId, exceptId) {
+  const result = await database.query(
+    `SELECT id FROM students
+     WHERE LOWER(TRIM(nama)) = LOWER(TRIM($1))
+       AND teacher_id = $2
+       AND ($3::integer IS NULL OR id <> $3)
+     LIMIT 1`,
+    [nama, teacherId, exceptId ?? null]
+  );
+  return result.rows[0];
+}
 
-app.get("/students", async (req, res) => {
-  const { teacher_id: teacherId } = req.query;
-  const result = teacherId === undefined
-    ? await pool.query("SELECT * FROM students ORDER BY id")
-    : await pool.query(
-      "SELECT * FROM students WHERE teacher_id = $1 ORDER BY id",
-      [teacherId]
-    );
-  res.json(result.rows.map(formatStudent));
-});
+function createApp({
+  database = pool,
+  publishStudentCreated: publish = publishStudentCreated,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const app = express();
 
-app.get("/students/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) {
-    return res.status(400).json({ error: "Student id tidak valid" });
-  }
+  app.use(express.json());
 
-  const result = await pool.query("SELECT * FROM students WHERE id = $1", [id]);
-  if (!result.rows[0]) {
-    return res.status(404).json({ error: "Student tidak ditemukan" });
-  }
-  return res.json(formatStudent(result.rows[0]));
-});
+  app.get("/health", async (req, res) => {
+    await database.query("SELECT 1");
+    res.json({ status: "ok", service: "student-service" });
+  });
 
-app.post("/students", async (req, res) => {
-  const { nama, umur, tanggal, teacher_id: teacherId } = req.body;
-  if (
-    typeof nama !== "string" ||
-    !nama.trim() ||
-    !Number.isInteger(umur) ||
-    typeof tanggal !== "string" ||
-    !Number.isInteger(teacherId) ||
-    teacherId < 1
-  ) {
-    return res.status(400).json({ error: "Data student tidak valid" });
-  }
+  app.get("/students", async (req, res) => {
+    const { teacher_id: teacherId } = req.query;
+    const result = teacherId === undefined
+      ? await database.query("SELECT * FROM students ORDER BY id")
+      : await database.query(
+        "SELECT * FROM students WHERE teacher_id = $1 ORDER BY id",
+        [teacherId]
+      );
+    res.json(result.rows.map(formatStudent));
+  });
 
-  const validation = await validateTeacher(teacherId);
-  if (validation) {
-    return res.status(validation.status).json({ error: validation.error });
-  }
+  app.get("/students/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: "Student id tidak valid" });
+    }
 
-  const result = await pool.query(
-    `INSERT INTO students (nama, umur, tanggal, teacher_id)
+    const result = await database.query("SELECT * FROM students WHERE id = $1", [id]);
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Student tidak ditemukan" });
+    }
+    return res.json(formatStudent(result.rows[0]));
+  });
+
+  app.post("/students", async (req, res) => {
+    const { nama, umur, tanggal, teacher_id: teacherId } = req.body;
+    if (
+      typeof nama !== "string" ||
+      !nama.trim() ||
+      !Number.isInteger(umur) ||
+      typeof tanggal !== "string" ||
+      !Number.isInteger(teacherId) ||
+      teacherId < 1
+    ) {
+      return res.status(400).json({ error: "Data student tidak valid" });
+    }
+
+    const validation = await validateTeacher(teacherId, fetchImpl);
+    if (validation) {
+      return res.status(validation.status).json({ error: validation.error });
+    }
+    console.log(`[student-service] teacher validated id=${teacherId}`);
+
+    if (await findConflictingStudent(database, nama, teacherId)) {
+      return res.status(409).json({
+        error: "Student dengan nama dan teacher tersebut sudah terdaftar",
+      });
+    }
+
+    const result = await database.query(
+      `INSERT INTO students (nama, umur, tanggal, teacher_id)
      VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [nama.trim(), umur, tanggal, teacherId]
-  );
-
-  try {
-    await publishStudentCreated(result.rows[0]);
-  } catch (error) {
-    console.error(
-      `Student ${result.rows[0].id} tersimpan, tetapi event notifikasi gagal dipublikasikan:`,
-      error
+      [nama.trim(), umur, tanggal, teacherId]
     );
-    return res.status(503).json({
-      error: "Student tersimpan, tetapi notifikasi belum masuk antrean",
-      student_id: result.rows[0].id,
-    });
-  }
+    console.log(
+      `[student-service] student created id=${result.rows[0].id}, teacher_id=${teacherId}`
+    );
 
-  return res.status(201).json(formatStudent(result.rows[0]));
-});
+    try {
+      await publish(result.rows[0]);
+    } catch (error) {
+      console.error(
+        `Student ${result.rows[0].id} tersimpan, tetapi event notifikasi gagal dipublikasikan:`,
+        error
+      );
+      return res.status(503).json({
+        error: "Student tersimpan, tetapi notifikasi belum masuk antrean",
+        student_id: result.rows[0].id,
+      });
+    }
 
-app.put("/students/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const { nama, umur, tanggal, teacher_id: teacherId } = req.body;
-  if (
-    !Number.isInteger(id) ||
-    id < 1 ||
-    typeof nama !== "string" ||
-    !nama.trim() ||
-    !Number.isInteger(umur) ||
-    typeof tanggal !== "string" ||
-    !Number.isInteger(teacherId) ||
-    teacherId < 1
-  ) {
-    return res.status(400).json({ error: "Data student tidak valid" });
-  }
+    return res.status(201).json(formatStudent(result.rows[0]));
+  });
 
-  const validation = await validateTeacher(teacherId);
-  if (validation) {
-    return res.status(validation.status).json({ error: validation.error });
-  }
+  app.put("/students/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    const { nama, umur, tanggal, teacher_id: teacherId } = req.body;
+    if (
+      !Number.isInteger(id) ||
+      id < 1 ||
+      typeof nama !== "string" ||
+      !nama.trim() ||
+      !Number.isInteger(umur) ||
+      typeof tanggal !== "string" ||
+      !Number.isInteger(teacherId) ||
+      teacherId < 1
+    ) {
+      return res.status(400).json({ error: "Data student tidak valid" });
+    }
 
-  const result = await pool.query(
-    `UPDATE students
+    const validation = await validateTeacher(teacherId, fetchImpl);
+    if (validation) {
+      return res.status(validation.status).json({ error: validation.error });
+    }
+
+    const existingStudent = await database.query(
+      "SELECT id FROM students WHERE id = $1",
+      [id]
+    );
+    if (!existingStudent.rows[0]) {
+      return res.status(404).json({ error: "Student tidak ditemukan" });
+    }
+
+    if (await findConflictingStudent(database, nama, teacherId, id)) {
+      return res.status(409).json({
+        error: "Student dengan nama dan teacher tersebut sudah terdaftar",
+      });
+    }
+
+    const result = await database.query(
+      `UPDATE students
      SET nama = $1, umur = $2, tanggal = $3, teacher_id = $4
      WHERE id = $5
      RETURNING *`,
-    [nama.trim(), umur, tanggal, teacherId, id]
-  );
-  if (!result.rows[0]) {
-    return res.status(404).json({ error: "Student tidak ditemukan" });
-  }
-  return res.json(formatStudent(result.rows[0]));
-});
+      [nama.trim(), umur, tanggal, teacherId, id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Student tidak ditemukan" });
+    }
+    return res.json(formatStudent(result.rows[0]));
+  });
 
-app.delete("/students/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) {
-    return res.status(400).json({ error: "Student id tidak valid" });
-  }
+  app.delete("/students/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: "Student id tidak valid" });
+    }
 
-  const result = await pool.query(
-    "DELETE FROM students WHERE id = $1 RETURNING id",
-    [id]
-  );
-  if (!result.rows[0]) {
-    return res.status(404).json({ error: "Student tidak ditemukan" });
-  }
-  return res.json(formatStudent(result.rows[0]));
-});
+    const result = await database.query(
+      "DELETE FROM students WHERE id = $1 RETURNING id",
+      [id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Student tidak ditemukan" });
+    }
+    return res.json(formatStudent(result.rows[0]));
+  });
 
-app.use((error, req, res, next) => {
-  console.error("Student service error:", error);
-  if (res.headersSent) return next(error);
-  return res.status(500).json({ error: "Gagal memproses data student" });
-});
+  app.use((error, req, res, next) => {
+    console.error("Student service error:", error);
+    if (res.headersSent) return next(error);
+    return res.status(500).json({ error: "Gagal memproses data student" });
+  });
 
-app.listen(port, () => {
-  console.log(`Student service berjalan di port ${port}`);
-});
+  return app;
+}
+
+if (require.main === module) {
+  createApp().listen(port, () => {
+    console.log(`Student service berjalan di port ${port}`);
+  });
+}
+
+module.exports = { createApp };

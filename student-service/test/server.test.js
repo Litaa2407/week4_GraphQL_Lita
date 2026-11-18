@@ -73,7 +73,7 @@ test("POST /students publishes an event after inserting the student", async (t) 
   const baseUrl = await serve(createApp({
     database,
     fetchImpl: async (url) => {
-      assert.equal(url, "http://localhost:3002/teachers/4");
+      assert.equal(url, "http://127.0.0.1:3002/teachers/4");
       return { ok: true, status: 200 };
     },
     publishStudentCreated: async (createdStudent) => {

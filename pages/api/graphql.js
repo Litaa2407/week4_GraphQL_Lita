@@ -10,9 +10,9 @@ const { verifyAppToken } = require("../../lib/auth");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: process.env.DATABASE_SSL === "false"
+    ? false
+    : { rejectUnauthorized: false },
 });
 const studentServiceUrl =
   process.env.STUDENT_SERVICE_URL || "http://localhost:3001";

@@ -17,7 +17,11 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const studentProto = grpc.loadPackageDefinition(packageDefinition).student;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
+  ssl: process.env.DATABASE_SSL === "false"
+    ? false
+    : process.env.DATABASE_URL
+      ? { rejectUnauthorized: false }
+      : undefined,
 });
 
 async function getStudent(call, callback) {

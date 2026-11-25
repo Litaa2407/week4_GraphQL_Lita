@@ -20,7 +20,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## GraphQL API and microservices
 
-The Next.js GraphQL API on port `3000` delegates student operations to the Express [student-service](./student-service/) on port `3001` and teacher operations to the Express [teacher-service](./teacher-service/) on port `3002`. Student creation validates the teacher through teacher-service. Both services currently use the existing PostgreSQL database configured by `DATABASE_URL`; student-service owns student operations and teacher-service owns teacher reads.
+The Next.js GraphQL API on port `3000` delegates student operations to the Express [student-service](./student-service/) on port `3001` and teacher operations to the Express [teacher-service](./teacher-service/) on port `3002`. Student creation validates the teacher through teacher-service. Both services use PostgreSQL configured by `DATABASE_URL`; the Compose setup provides a local PostgreSQL database with demo data.
 
 The [gateway project](./gateway/README.md) routes `/service-a/*`, `/student-service/*`, and `/teacher-service/*` through port `8080`. See the gateway README for the manual Postman failure exercise, the automated smoke test, and the architecture diagram.
 
@@ -28,11 +28,13 @@ The [gateway project](./gateway/README.md) routes `/service-a/*`, `/student-serv
 
 Fitur ini mengikuti arsitektur proyek: `student-service` mengelola student dan notifikasi RabbitMQ, sedangkan `teacher-service` menyediakan data teacher yang dipakai untuk validasi student. Keduanya memiliki `GET /health` yang memeriksa koneksi PostgreSQL. Tes menggunakan database dan publisher tiruan, jadi `npm test` tidak membutuhkan PostgreSQL atau RabbitMQ.
 
-Jalankan semua tes dari root:
+Jalankan unit test dari root:
 
 ```powershell
 npm test
 ```
+
+Untuk menjalankan juga tes integrasi terhadap stack Docker Compose, atur `COMPOSE_TEST=1` sebelum `npm test`. Tes ini menghentikan teacher-service, memastikan pembuatan student menghasilkan `503`, menyalakan service kembali, memastikan respons `201`, lalu menghapus data uji.
 
 Tes per service dan kontrak gateway juga dapat dijalankan sendiri:
 
@@ -57,12 +59,50 @@ Monitor mengecek `http://localhost:3001/health` dan `http://localhost:3002/healt
 
 ### Bukti tugas dan GitHub Actions
 
-1. Jalankan `npm test` di terminal dan ambil screenshot hasil lulus.
-2. Untuk bukti kegagalan langkah 03, ubah sementara ekspektasi status pada salah satu tes menjadi nilai yang salah, jalankan `npm test`, lalu screenshot hasil gagal. Kembalikan ekspektasi, jalankan lagi sampai lulus, dan screenshot hasil perbaikan. Jangan simpan perubahan uji yang sengaja salah.
-3. Ambil potongan log `student-service` dan `teacher-service` yang menunjukkan `teacher_id`/`id` sama.
-4. Jalankan monitor, hentikan lalu nyalakan kembali teacher-service, dan screenshot terminal yang menunjukkan `[ALERT]` serta `[RECOVERED]`.
-5. Setelah perubahan di-push ke GitHub, buka halaman [Actions](https://github.com/Litaa2407/week4_GraphQL_Lita/actions) untuk screenshot run hijau di `main`. Untuk screenshot run merah, push kegagalan tes sementara ke branch `uji-gagal`; setelah screenshot diambil, perbaiki tes dan push perbaikannya. Repo ini sudah menjalankan workflow dari [.github/workflows/ci.yml](./.github/workflows/ci.yml).
-6. Link repo: [week4_GraphQL_Lita](https://github.com/Litaa2407/week4_GraphQL_Lita). Badge CI di bagian atas README menunjuk ke workflow `main`.
+1. Link repo: [week4_GraphQL_Lita](https://github.com/Litaa2407/week4_GraphQL_Lita).
+2. Dari root project, jalankan `docker compose up --build --detach --wait`, kemudian `docker compose ps`; ambil screenshot ketika semua service berstatus `healthy`.
+3. Di PowerShell, jalankan `$env:COMPOSE_TEST = "1"; npm test`; ambil screenshot hasil test lulus terhadap stack Compose.
+4. Untuk screenshot khusus latihan kegagalan dan pemulihan, gunakan `$env:COMPOSE_TEST = "1"; npm test -- --test-name-pattern="Compose mengembalikan"`. Output mencatat `503` saat `teacher-service` berhenti dan `201` sesudah dinyalakan kembali. Di proyek ini, `teacher-service` adalah service dependensi yang menggantikan peran `product-service` pada contoh tugas.
+5. Workflow [CI berbasis Compose](./.github/workflows/ci.yml) membangun dan menunggu semua service sehat, lalu menjalankan `npm test` termasuk tes pemulihan tersebut. Setelah perubahan ini masuk ke `main`, ambil link run hijau pada tab [Actions](https://github.com/Litaa2407/week4_GraphQL_Lita/actions?query=branch%3Amain).
+
+Untuk menghentikan stack setelah demo, jalankan `docker compose down`. Data PostgreSQL lokal tetap disimpan di volume Compose; untuk menghapus data demo juga, gunakan `docker compose down --volumes`.
+
+### Menjalankan seluruh sistem dengan Compose
+
+Setiap komponen aplikasi, kedua service data, dan gateway dibuat dari Dockerfile masing-masing. PostgreSQL diinisialisasi dengan schema serta data demo oleh [database/init.sql](./database/init.sql); RabbitMQ menjalankan antrean event, worker email, dan gRPC service juga disertakan.
+
+```powershell
+docker compose up --build --detach --wait
+docker compose ps
+```
+
+URL lokal: Next.js `http://localhost:3000`, student-service `http://localhost:3001`, teacher-service `http://localhost:3002`, gateway `http://localhost:8080`, RabbitMQ Management `http://localhost:15672` (login demo `guest` / `guest`), dan gRPC `localhost:50051`. Credential PostgreSQL di Compose hanya untuk penggunaan lokal; ganti konfigurasi sebelum deployment selain lokal. `DATABASE_SSL=false` hanya menonaktifkan TLS untuk PostgreSQL lokal, sedangkan konfigurasi default service tetap memakai SSL untuk database eksternal.
+
+Untuk menghasilkan screenshot yang menunjukkan test integrasi serta skenario `503` → `201`:
+
+```powershell
+$env:COMPOSE_TEST = "1"
+npm test
+```
+
+Tes integrasi otomatis berhenti dan menyalakan kembali `teacher-service` lewat Docker Compose, lalu membersihkan student yang dibuat. Ia memerlukan stack yang sudah sehat. Hapus pengaturan mode setelah demo dengan `Remove-Item Env:COMPOSE_TEST`.
+
+### Ringkasan implementasi untuk laporan
+
+Sistem GraphQL ini menggunakan dua microservice Express untuk data utama. `student-service` berjalan di port 3001 dan menangani data student, sedangkan `teacher-service` berjalan di port 3002 dan menyediakan data teacher. Saat student dibuat, `student-service` meminta validasi teacher kepada `teacher-service` menggunakan `teacher_id`. Jika teacher ditemukan, data student disimpan dan event notifikasi diterbitkan ke RabbitMQ. Log kedua service mencatat ID teacher yang sama sehingga alur komunikasi antarlayanan dapat diverifikasi.
+
+Kedua service menyediakan endpoint `GET /health`. Endpoint tersebut menjalankan query `SELECT 1` untuk memastikan database dapat dijangkau, lalu mengembalikan status service dalam format JSON. `monitor.js` memeriksa endpoint kesehatan student-service dan teacher-service secara berkala. Perubahan dari kondisi sehat menjadi tidak sehat dicatat sebagai `ALERT`, sedangkan layanan yang pulih dicatat sebagai `RECOVERED`.
+
+Pengujian otomatis student-service mencakup jalur sukses membaca student, jalur error untuk ID student yang tidak valid, serta efek pembuatan student yang menerbitkan event setelah data tersimpan. Pengujian teacher-service mencakup jalur sukses membaca daftar teacher, jalur error ketika teacher tidak ditemukan, dan pemeriksaan bahwa health check benar-benar melakukan query ke database. Teacher-service saat ini hanya menyediakan operasi baca, sehingga pengujian efeknya memverifikasi interaksi health check dengan dependency database, bukan perubahan data.
+
+Workflow GitHub Actions pada `.github/workflows/ci.yml` dipicu oleh push ke `main` atau `uji-gagal`, dan pull request menuju `main`. Workflow membangun dan menunggu stack Compose sehat, menjalankan unit test serta skenario integrasi 503→201, lalu menjalankan linter. Unit test memakai dependency tiruan dan dapat dijalankan tanpa PostgreSQL maupun RabbitMQ; tes integrasi menggunakan service Compose.
+
+### Refleksi
+
+- **(a)** Tes otomatis hanya memeriksa jalur yang sudah ditentukan dengan dependency tiruan, sehingga belum tentu menangkap masalah integrasi nyata seperti jaringan lambat, konfigurasi database keliru, RabbitMQ tidak tersedia, atau beban bersamaan.
+- **(b)** ID permintaan (*correlation ID*) penting untuk menelusuri satu request melewati GraphQL dan beberapa service, sedangkan log yang hanya tampil di terminal sulit dicari, tidak terpusat, dan dapat hilang ketika proses atau terminal ditutup.
+- **(c)** Jika `/health` selalu menjawab `ok` tanpa memeriksa database atau service yang dibutuhkan, monitor bisa memberi status sehat palsu sementara operasi sebenarnya gagal.
+- **(d)** Konfigurasi lokal dan CI dapat berbeda, misalnya port yang sudah dipakai atau variabel `.env` lokal. Compose mengurangi perbedaan dengan membangun semua komponen dan memakai database serta konfigurasi demo yang sama di laptop maupun CI.
 
 OpenAPI/Swagger documentation for the student and teacher services is served at `http://localhost:8080/docs` when the gateway is running. The contract is [gateway/openapi.json](./gateway/openapi.json); see the [gateway README](./gateway/README.md#openapi-dan-swagger-ui) for the `409` Try it out and contract-drift verification steps.
 
@@ -111,7 +151,7 @@ Event yang sama akan menghasilkan dua baris `EMAIL_SENT` dengan `eventId` yang s
 
 Diagram arsitektur yang diperbarui tersedia di [diagram SVG](./gateway/architecture-diagram.svg) dan [dokumentasi arsitektur](./.github/modernize/assessment/engines/facts/architecture-diagram.md).
 
-For the failure exercise, start Next.js with `npm run dev`, then run `node .\smoke-test.js` from the project root. The test starts the two data services and gateway, stops teacher-service, verifies student creation returns `503` while student listing remains `200`, then verifies creation returns `201` after teacher-service restarts. It removes the test student afterward.
+For the failure exercise against the Compose stack, use the `COMPOSE_TEST=1` instructions above. The separate `node .\smoke-test.js` script remains available for a local setup with Next.js, PostgreSQL, and its own service processes.
 
 You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
 

@@ -1,7 +1,23 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: graphql
+      POSTGRES_USER: graphql
+      POSTGRES_PASSWORD: graphql-local-only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graphql -d graphql"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   rabbitmq:
     image: rabbitmq:4-management
-    container_name: graphql-rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -10,3 +26,166 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  student-service:
+    build:
+      context: ./student-service
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgres://graphql:graphql-local-only@postgres:5432/graphql
+      DATABASE_SSL: "false"
+      TEACHER_SERVICE_URL: http://teacher-service:3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      teacher-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  teacher-service:
+    build:
+      context: ./teacher-service
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgres://graphql:graphql-local-only@postgres:5432/graphql
+      DATABASE_SSL: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3002:3002"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://graphql:graphql-local-only@postgres:5432/graphql
+      DATABASE_SSL: "false"
+      STUDENT_SERVICE_URL: http://student-service:3001
+      TEACHER_SERVICE_URL: http://teacher-service:3002
+      JWT_SECRET: ${JWT_SECRET:-compose-local-development-secret-change-before-deploy}
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      student-service:
+        condition: service_healthy
+      teacher-service:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  gateway:
+    build:
+      context: ./gateway
+    environment:
+      PORT: "8080"
+      SERVICE_A_URL: http://web:3000
+      STUDENT_SERVICE_URL: http://student-service:3001
+      TEACHER_SERVICE_URL: http://teacher-service:3002
+    depends_on:
+      web:
+        condition: service_healthy
+      student-service:
+        condition: service_healthy
+      teacher-service:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/openapi.json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  email-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "email-service/consumer.js"]
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  grpc-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "grpc-server.js"]
+    environment:
+      PORT: "50051"
+      DATABASE_URL: postgres://graphql:graphql-local-only@postgres:5432/graphql
+      DATABASE_SSL: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const net=require('node:net');const s=net.connect(50051,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

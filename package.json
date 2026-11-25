@@ -10,7 +10,7 @@
     "email:consumer": "node email-service/consumer.js",
     "email:consumer:crash": "node email-service/consumer.js --crash",
     "email:publish-demo": "node email-service/publish-demo.js",
-    "test": "node --test monitor.test.js student-service/test/server.test.js teacher-service/test/server.test.js gateway/test-openapi-contract.js",
+    "test": "node --test monitor.test.js student-service/test/server.test.js teacher-service/test/server.test.js gateway/test-openapi-contract.js compose-stack.test.js",
     "lint": "eslint",
     "monitor": "node monitor.js",
     "test:microservices": "node smoke-test.js",
